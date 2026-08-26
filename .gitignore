@@ -1,0 +1,21 @@
+# Modelo local (pesado, se descarga solo la primera vez)
+*.gguf
+
+# Secretos y configuración local
+.env
+*.key
+
+# Datos REALES de clientes: NUNCA subir. Solo va crm_ejemplo.json (inventado).
+datos/*_real.*
+datos/crm_real*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Salidas de notebooks pesadas (opcional; ver nbstripout en el README)
