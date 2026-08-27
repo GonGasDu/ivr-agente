@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "version": "2026-08 · v1 (cerrada)",
+    "descripcion": "Fuente de verdad de la política de pagos. Python lee los parámetros duros; el texto explicativo alimenta la respuesta al cliente. Editar este archivo cambia la política sin tocar código."
+  },
+  "calendario_facturacion": {
+    "factura_dia": 5,
+    "vencimiento_dia": 12,
+    "corte_dia": 13,
+    "nota": "Impaga al día 12 => deudor de 1 factura y corte el 13. El día 1 nace una nueva factura."
+  },
+  "extension_pago": {
+    "max_por_ciclo": 2,
+    "dias_por_extension": 5,
+    "costo": 3000,
+    "tope_dia_mes": 30,
+    "aplica_si_facturas_adeudadas_max": 1,
+    "excluyente_con": [
+      "descuento_deudor"
+    ],
+    "combina_con": [
+      "negociacion_descuento"
+    ],
+    "nota": "Nueva fecha = min(día_actual + 5, 30). Cada extensión suma su costo a la deuda."
+  },
+  "negociacion_descuento": {
+    "descripcion": "Cuando el cliente no puede/no quiere pagar, o amenaza con irse. Se escalan ofertas (la más barata primero); si ninguna alcanza, se deriva a un asesor humano con más margen.",
+    "escalones": [
+      {
+        "nivel": 1,
+        "oferta": "10% sobre la factura vigente"
+      },
+      {
+        "nivel": 2,
+        "oferta": "20% sobre la factura vigente, o 5% en la vigente + 5% en las próximas 2 (5% x3), o una combinación equivalente"
+      }
+    ],
+    "techo": "Si no acepta ningún escalón, derivar a un asesor humano con margen para descuentos mayores. NO se le dice al cliente que es el área de bajas: se presenta de forma neutral.",
+    "caso_competencia": "Cliente que se cambia de compañía: directo 20% en las próximas 2 facturas (sin pasar por el 10%). Si no acepta -> humano.",
+    "antiguedad_minima_meses": 12,
+    "aplica_sobre": "factura vigente y/o abono mensual futuro, según el escalón",
+    "antiguedad_regla": "Menos de 12 meses: accede solo al escalón 1 (10%); si no acepta -> humano. 12 meses o más: accede también al escalón 2 (20% / 5x3)."
+  },
+  "rehabilitacion_2_facturas": {
+    "aplica_si_facturas_adeudadas": 2,
+    "flujo_dos_llamadas": {
+      "llamada_1": "El agente propone pagar el 75% de la deuda (con 10% de descuento) y volver a comunicarse una vez hecho el pago.",
+      "entre_llamadas": "El pago del 75% baja las facturas adeudadas y deja un 'resto' (campo saldo_refinanciar) en la cuenta.",
+      "llamada_2": "El agente detecta 1 factura + saldo_refinanciar > 0. Ofrece refinanciar ese resto en las próximas 2 facturas. Si acepta, cierra; si no, deriva a humano."
+    },
+    "porcentaje_pago": 75,
+    "descuento_sobre_ese_pago": 10,
+    "cuotas_refinanciacion": 2
+  },
+  "escalar_a_humano": {
+    "facturas_adeudadas_min": 3,
+    "contratos": [
+      "De baja",
+      "Proceso de baja"
+    ],
+    "antiguedad_insuficiente_para_retencion": true,
+    "rechazo_de_todos_los_escalones": true,
+    "rechazo_medida_2_facturas": true,
+    "presentacion_neutral": "Al derivar por rechazo, no se nombra 'bajas'; se dice que se pasa con un asesor.",
+    "motivo": "La baja es sensible (antigüedad, equipo instalado, refinanciación): requiere análisis humano."
+  }
+}

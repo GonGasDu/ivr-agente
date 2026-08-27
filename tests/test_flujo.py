@@ -13,10 +13,14 @@ from agente.orquestador import orquestador, nuevo_estado
 _CLIENTES = {
     "36956909": {"nombre": "Ana Test", "dni": "36956909", "nro_cliente": "480001",
                  "plan": "FOEmp500", "velocidad_mbps": 500, "abono_mensual": 120000,
-                 "deuda": 8500.0, "extension_pago": 1, "estado_conexion": "Cortada"},
+                 "deuda": 8500.0, "extension_pago": 1, "estado_conexion": "Cortada",
+                 "facturas_adeudadas": 1, "saldo_refinanciar": 0, "estado_contrato": "Activo",
+                 "fecha_alta": "2023-01-10"},
     "480002": {"nombre": "Carlos Test", "dni": "27888999", "nro_cliente": "480002",
                "plan": "WIHogar60", "velocidad_mbps": 60, "abono_mensual": 16000,
-               "deuda": 0.0, "extension_pago": 0, "estado_conexion": "Cortada"},
+               "deuda": 0.0, "extension_pago": 0, "estado_conexion": "Cortada",
+               "facturas_adeudadas": 0, "saldo_refinanciar": 0, "estado_contrato": "Activo",
+               "fecha_alta": "2022-05-01"},
 }
 
 

@@ -70,6 +70,16 @@ editá `generar_cliente` (hay ejemplos comentados).
 python scripts/generar_crm.py --n 100 --seed 7 --salida datos/crm_ejemplo.json
 ```
 
+
+## La política de pagos (fuente de verdad editable)
+
+`datos/politica_pagos.json` contiene toda la lógica de negocio de pagos como datos
+(umbrales, descuentos, escalones, costos). `agente/politica.py` la lee y evalúa qué
+le corresponde a cada cliente; `agente/categorias/pagos.py` la usa para negociar.
+
+Cambiar la política = editar el JSON, sin tocar código. Es un enfoque tipo RAG-lite:
+conocimiento externo y editable, sin la complejidad de embeddings (el documento es chico).
+
 ## Privacidad (importante)
 
 - **Nunca** subas datos reales de clientes. En el repo solo va `crm_ejemplo.json` (inventado).
