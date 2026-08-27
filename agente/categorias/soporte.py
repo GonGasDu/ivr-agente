@@ -1,6 +1,13 @@
-"""Worker de SOPORTE TÉCNICO. Ver nota de arquitectura en pagos.py."""
+"""Worker de SOPORTE TÉCNICO (single-turn). Interfaz uniforme iniciar/paso."""
 
 
-def manejar(cliente: dict) -> tuple[str, str, bool]:
-    return (f"Tu conexión figura: {cliente['estado_conexion']}. "
-            "Te derivo a soporte técnico con ese dato.", "derivar_soporte", True)
+def iniciar(cliente, hoy_dia=None):
+    t = {"mensaje": f"Tu conexión figura: {cliente['estado_conexion']}. "
+                    "Te derivo a soporte técnico con ese dato.",
+         "decision": "derivar_soporte", "requiere_humano": True, "fin": True, "agente_destino": "soporte"}
+    return None, t
+
+
+def paso(sub, mensaje, clasificar):
+    return {"mensaje": "Te derivo a soporte técnico.", "decision": "derivar_soporte",
+            "requiere_humano": True, "fin": True, "agente_destino": "soporte"}

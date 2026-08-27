@@ -80,3 +80,13 @@ def descuento_maximo(cliente: dict, motivo: str, hoy: date | None = None) -> str
     if antiguedad_meses(cliente, hoy) >= pol["antiguedad_minima_meses"]:
         return "nivel_2"                            # 10% -> 20%/5x3 -> humano
     return "nivel_1"                                # solo 10% -> humano
+
+
+def problema_es_de_pago(cliente: dict) -> bool:
+    """True si la falta o afectación del servicio es por deuda, no técnica.
+    Mira estado_conexion, facturas_adeudadas y estado_cliente."""
+    if cliente.get("estado_conexion") in {"Moroso", "Cortada", "Forzada"}:
+        return True
+    if cliente.get("estado_cliente") == "Deshabilitado" and cliente.get("facturas_adeudadas", 0) >= 1:
+        return True
+    return cliente.get("facturas_adeudadas", 0) >= 1

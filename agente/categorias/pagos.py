@@ -1,19 +1,17 @@
 """
-Worker de PAGOS — ahora un sub-agente multi-turno.
+Worker de PAGOS — sub-agente multi-turno.
 
-A diferencia de los workers simples (una respuesta y listo), pagos NEGOCIA:
-propone una oferta, ESPERA la respuesta del cliente, y según acepte o no,
-cierra o escala hasta el techo -> humano.
+Negocia: propone una oferta, ESPERA la respuesta del cliente, y según acepte o
+no, cierra o escala hasta el techo -> humano. La lógica de negocio (montos,
+escalones, extensiones) vive en agente.politica; acá va la conversación.
 
-Interfaz multi-turno:
-    iniciar(cliente, hoy_dia)      -> (sub_estado, turno)   # primer mensaje
-    paso(sub_estado, mensaje, clasificar) -> turno          # turnos siguientes
+Interfaz:
+    iniciar(cliente, hoy_dia=None)        -> (sub_estado, turno)
+    paso(sub_estado, mensaje, clasificar) -> turno
 
-`clasificar(mensaje, opciones)` se inyecta (el LLM real o uno simulado en tests).
-La lógica de negocio (montos, escalones, extensiones) vive en agente.politica.
-
-Nota: el orquestador todavía usa manejar() (single-shot). El cableado del
-seam multi-turno es el próximo paso. manejar() queda como compatibilidad.
+El primer mensaje explica el estado de la conexión cuando el servicio está
+afectado por deuda, para que el cliente entienda por qué (aunque haya llamado
+diciendo "no tengo internet").
 """
 from agente import politica as pol
 
@@ -21,6 +19,16 @@ from agente import politica as pol
 def _turno(mensaje, decision="continuar", requiere_humano=False, fin=False):
     return {"mensaje": mensaje, "decision": decision,
             "requiere_humano": requiere_humano, "fin": fin, "agente_destino": "pagos"}
+
+
+def _preambulo_conexion(cliente):
+    """Explica, en una frase, por qué el servicio está afectado (si lo está)."""
+    return {
+        "Cortada":       "Tu servicio está cortado por una deuda pendiente. ",
+        "Moroso":        "Tu conexión figura como morosa por falta de pago. ",
+        "Forzada":       "Tu servicio sigue activo de forma condicional por una deuda pendiente. ",
+        "Deshabilitada": "Tu servicio está deshabilitado por tu situación de pago. ",
+    }.get(cliente.get("estado_conexion"), "")
 
 
 def iniciar(cliente, hoy_dia=None):
@@ -31,7 +39,8 @@ def iniciar(cliente, hoy_dia=None):
         return sub, _turno("No registrás deuda pendiente. ¿Necesitás algo más?", "responder", fin=True)
 
     if sit == "humano":
-        return sub, _turno("Por la situación de tu cuenta, te paso con un asesor que va a poder ayudarte.",
+        return sub, _turno(_preambulo_conexion(cliente) +
+                           "Por la situación de tu cuenta, te paso con un asesor que va a poder ayudarte.",
                            "derivar_asesor", requiere_humano=True, fin=True)
 
     if sit == "rehabilitacion":
@@ -44,12 +53,14 @@ def iniciar(cliente, hoy_dia=None):
     if sit == "segunda_llamada":
         resto = cliente["saldo_refinanciar"]
         sub["paso"] = "espera_refin"
-        return sub, _turno(f"Veo un saldo de ${resto:.0f} pendiente de tu pago anterior. Lo podemos "
+        return sub, _turno(_preambulo_conexion(cliente) +
+                           f"Veo un saldo de ${resto:.0f} pendiente de tu pago anterior. Lo podemos "
                            f"refinanciar en tus próximas 2 facturas (${resto/2:.0f} cada una). ¿Lo hacemos así?")
 
     # negociacion (1 factura)
     sub["paso"] = "negociando"
-    return sub, _turno(f"Tenés 1 factura pendiente de ${cliente['deuda']:.0f}. Puedo ofrecerte un 10% de "
+    return sub, _turno(_preambulo_conexion(cliente) +
+                       f"Tenés 1 factura pendiente de ${cliente['deuda']:.0f}. Puedo ofrecerte un 10% de "
                        f"descuento si la abonás ahora, o una extensión de pago si necesitás unos días. "
                        f"¿Qué preferís?")
 
@@ -96,8 +107,7 @@ def paso(sub, mensaje, clasificar):
             return _turno("Lamento que quieras irte. Para que te quedes, puedo ofrecerte un 20% de descuento "
                           "durante los próximos 2 meses. ¿Te sirve?")
         # rechaza
-        tope = pol.descuento_maximo(c, "no_puede_pagar")
-        if sub["nivel"] == 1 and tope == "nivel_2":
+        if sub["nivel"] == 1 and pol.descuento_maximo(c, "no_puede_pagar") == "nivel_2":
             sub["nivel"] = 2
             return _turno("Puedo mejorarlo: 20% en esta factura, o 5% este mes y 5% los próximos dos. "
                           "¿Cuál te viene mejor?")
@@ -105,9 +115,3 @@ def paso(sub, mensaje, clasificar):
                       "derivar_asesor", requiere_humano=True, fin=True)
 
     return _turno("No entendí. ¿Podés repetirlo?")
-
-
-# --- Compatibilidad con el seam actual (single-shot). Se reemplaza al cablear multi-turno. ---
-def manejar(cliente):
-    _, t = iniciar(cliente)
-    return (t["mensaje"], t["decision"], t["requiere_humano"])

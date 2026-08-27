@@ -1,26 +1,33 @@
 """
 Tests deterministas del flujo, SIN el modelo real.
 
-Inyectamos un clasificador simulado y un CRM en memoria. Prueba que Python
+Inyectan un clasificador simulado y un CRM en memoria. Prueban que Python
 —el que conserva el control— decide bien: identificación, reintento alternado,
-derivación a humano y ruteo a categoría.
+derivación, ruteo, la negociación multi-turno de pagos y la desambiguación.
 
-Correr desde la raíz del repo:   python -m pytest -q   (o: python tests/test_flujo.py)
+Correr desde la raíz:   python -m pytest -q   (o: python tests/test_flujo.py)
 """
 from agente.orquestador import orquestador, nuevo_estado
 
-# --- CRM falso en memoria (esquema nuevo: nro de 6 dígitos) ---
 _CLIENTES = {
+    # debe 1 factura, conexión afectada por pago
     "36956909": {"nombre": "Ana Test", "dni": "36956909", "nro_cliente": "480001",
                  "plan": "FOEmp500", "velocidad_mbps": 500, "abono_mensual": 120000,
                  "deuda": 8500.0, "extension_pago": 1, "estado_conexion": "Cortada",
                  "facturas_adeudadas": 1, "saldo_refinanciar": 0, "estado_contrato": "Activo",
-                 "fecha_alta": "2023-01-10"},
+                 "estado_cliente": "Habilitado", "fecha_alta": "2023-01-10"},
+    # al día, conexión sana -> soporte real
     "480002": {"nombre": "Carlos Test", "dni": "27888999", "nro_cliente": "480002",
                "plan": "WIHogar60", "velocidad_mbps": 60, "abono_mensual": 16000,
-               "deuda": 0.0, "extension_pago": 0, "estado_conexion": "Cortada",
+               "deuda": 0.0, "extension_pago": 0, "estado_conexion": "Habilitada",
                "facturas_adeudadas": 0, "saldo_refinanciar": 0, "estado_contrato": "Activo",
-               "fecha_alta": "2022-05-01"},
+               "estado_cliente": "Habilitado", "fecha_alta": "2022-05-01"},
+    # moroso -> "no tengo internet" debe ir a pagos por desambiguación
+    "480003": {"nombre": "Moroso Test", "dni": "30111222", "nro_cliente": "480003",
+               "plan": "FOHogar300", "velocidad_mbps": 300, "abono_mensual": 26000,
+               "deuda": 26000.0, "extension_pago": 0, "estado_conexion": "Moroso",
+               "facturas_adeudadas": 1, "saldo_refinanciar": 0, "estado_contrato": "Activo",
+               "estado_cliente": "Habilitado", "fecha_alta": "2021-01-01"},
 }
 
 
@@ -35,6 +42,8 @@ def clasificar_fake(mensaje, opciones):
         "hogar": ["hogar", "casa"], "empresa": ["empresa", "oficina"],
         "facturacion": ["factura"], "pagos": ["pagar", "deuda", "abonar"],
         "asesor": ["asesor"], "soporte": ["internet", "soporte", "conexion", "conexión"],
+        "acepta": ["acepto", "dale", "ok", "bueno"], "rechaza": ["no", "rechazo"],
+        "extension": ["extension", "dias", "plazo"], "competencia": ["competencia", "otra empresa", "me voy"],
     }
     for op in opciones:
         if any(kw in m for kw in tabla.get(op, [])):
@@ -80,10 +89,32 @@ def test_contratar_empresa_va_a_ventas():
     assert r["decision"] == "derivar_ventas"
 
 
-def test_soporte_incluye_estado_de_conexion():
+def test_soporte_real_cuando_conexion_sana():
     r = correr(["tengo un reclamo", "480002", "hace horas que no tengo internet"])
     assert r["agente_destino"] == "soporte"
-    assert "Cortada" in r["mensaje"]
+
+
+def test_desambiguacion_moroso_sin_internet_va_a_pagos():
+    # Cliente Moroso dice "no tengo internet": es tema de pago, no técnico.
+    r = correr(["soy cliente", "480003", "no tengo internet"])
+    assert r["agente_destino"] == "pagos"
+
+
+def test_negociacion_pagos_multiturno_acepta():
+    # Identifica -> pagos -> propone 10% -> el cliente acepta -> cierra.
+    r = correr(["soy cliente", "36956909", "quiero pagar", "dale, acepto"])
+    assert r["agente_destino"] == "pagos"
+    assert r["decision"] == "responder"
+
+
+def test_negociacion_pagos_rechaza_escala_o_deriva():
+    # Cliente antiguo (>=12m) rechaza el 10% -> el agente sube al escalón 2 (sigue conversando).
+    estado = nuevo_estado()
+    for m in ["soy cliente", "36956909", "quiero pagar"]:
+        orquestador(estado, m, clasificar=clasificar_fake, buscar=buscar_fake)
+    r = orquestador(estado, "no me sirve", clasificar=clasificar_fake, buscar=buscar_fake)
+    assert r["nodo"] == "en_worker"          # sigue negociando, no cerró
+    assert "20%" in r["mensaje"]
 
 
 if __name__ == "__main__":
