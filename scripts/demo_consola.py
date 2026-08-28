@@ -12,8 +12,7 @@ from agente.orquestador import orquestador, nuevo_estado
 
 
 def main():
-    print("Cargando modelo local (la primera vez descarga ~1,25 GB)...")
-    cargar_modelo()
+    cargar_modelo()   # informa el proveedor (local u openrouter)
     print("Listo. Escribí tu consulta ('salir' para terminar).\n")
 
     estado = nuevo_estado()

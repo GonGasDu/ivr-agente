@@ -1,56 +1,111 @@
 """
-Wrapper estable del LLM local (Clase 2).
+Wrapper del LLM — CONMUTABLE entre proveedor local (llama.cpp) y OpenRouter.
 
-El resto del sistema NUNCA toca llama.cpp: solo usa `consultar_llm`.
-Esto hace el modelo intercambiable (LFM2.5, Hermes, etc.): cambiás REPO_ID/FILENAME
-y nada más se entera.
+El resto del sistema NUNCA se entera del proveedor: solo usa consultar_llm(),
+que devuelve siempre la misma forma de dict. Cambiar de modelo es configuración,
+no código (fue justo para esto que aislamos el modelo detrás del wrapper).
 
-El modelo se carga una sola vez con `cargar_modelo()`. Si no se cargó,
-`consultar_llm` devuelve el contrato de error en vez de romper: así las partes
-deterministas del sistema (reglas, orquestación) se pueden usar y testear sin el modelo.
+Configuración (por variables de entorno o por un archivo .env en la raíz):
+    IVR_PROVEEDOR      "local" (por defecto) | "openrouter"
+    OPENROUTER_API_KEY tu clave (solo para openrouter). NUNCA la subas al repo.
+    IVR_MODELO         slug del modelo en openrouter (por defecto deepseek v4 flash)
+
+Privacidad: con "openrouter" el texto viaja a un tercero. Para datos reales de
+clientes, es una decisión de privacidad a considerar (ISO 42001).
 """
+import os
 import time
+import json
+import urllib.request
+import urllib.error
 
-# Modelo por defecto (el de las Clases 2 y 3). Para usar Hermes, cambiá estas dos líneas.
+
+def _cargar_dotenv(ruta: str = ".env"):
+    """Carga un .env simple (KEY=VALUE) si existe, sin pisar variables ya definidas."""
+    if os.path.exists(ruta):
+        for linea in open(ruta, encoding="utf-8"):
+            linea = linea.strip()
+            if linea and not linea.startswith("#") and "=" in linea:
+                k, v = linea.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_cargar_dotenv()
+
+PROVEEDOR = os.environ.get("IVR_PROVEEDOR", "local")          # "local" | "openrouter"
+MODELO_OPENROUTER = os.environ.get("IVR_MODELO", "deepseek/deepseek-v4-flash-0731")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# --- local (llama.cpp) ---
 REPO_ID = "unsloth/LFM2.5-1.2B-Instruct-GGUF"
 FILENAME = "LFM2.5-1.2B-Instruct-Q8_0.gguf"
-
-_llm = None  # instancia única del modelo (se llena con cargar_modelo)
+_llm = None
 
 
 def cargar_modelo(n_ctx: int = 4096, n_gpu_layers: int = 0):
-    """Descarga (si falta) y carga el modelo local. Devuelve la instancia."""
+    """Con 'local' descarga/carga el modelo. Con 'openrouter' no hay nada que cargar."""
+    if PROVEEDOR == "openrouter":
+        print(f"Proveedor: OpenRouter · modelo {MODELO_OPENROUTER}. Sin descarga local.")
+        return None
     global _llm
     from huggingface_hub import hf_hub_download
     from llama_cpp import Llama
-
-    ruta = hf_hub_download(repo_id=REPO_ID, filename=FILENAME)  # usa caché si ya existe
+    ruta = hf_hub_download(repo_id=REPO_ID, filename=FILENAME)
     _llm = Llama(model_path=ruta, n_ctx=n_ctx, n_gpu_layers=n_gpu_layers, verbose=False)
+    print(f"Proveedor: local · {REPO_ID}")
     return _llm
 
 
-def consultar_llm(consulta: str, instruccion: str,
-                  temperature: float = 0.2, max_tokens: int = 160) -> dict:
-    """Única puerta al modelo. Devuelve SIEMPRE un dict con la misma forma."""
+def _consultar_local(instruccion, consulta, temperature, max_tokens, inicio):
+    if _llm is None:
+        return {"ok": False, "error": "modelo local no cargado (llamá a cargar_modelo())",
+                "modo": "sin_modelo"}
+    salida = _llm.create_chat_completion(
+        messages=[{"role": "system", "content": instruccion},
+                  {"role": "user", "content": consulta}],
+        temperature=temperature, max_tokens=max_tokens,
+    )
+    return {"ok": True, "pregunta": consulta,
+            "respuesta": salida["choices"][0]["message"]["content"].strip(),
+            "modo": REPO_ID, "duracion_s": round(time.time() - inicio, 2)}
+
+
+def _consultar_openrouter(instruccion, consulta, temperature, max_tokens, inicio):
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        return {"ok": False, "error": "falta OPENROUTER_API_KEY en el entorno/.env",
+                "modo": "sin_api_key"}
+    cuerpo = json.dumps({
+        "model": MODELO_OPENROUTER,
+        "messages": [{"role": "system", "content": instruccion},
+                     {"role": "user", "content": consulta}],
+        "temperature": temperature, "max_tokens": max_tokens,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        OPENROUTER_URL, data=cuerpo, method="POST",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "error": f"HTTP {e.code}: {e.read().decode('utf-8')[:200]}",
+                "modo": "openrouter"}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}", "modo": "openrouter"}
+    try:
+        texto = data["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError):
+        return {"ok": False, "error": "respuesta sin 'choices'", "modo": "openrouter"}
+    return {"ok": True, "pregunta": consulta, "respuesta": texto,
+            "modo": MODELO_OPENROUTER, "duracion_s": round(time.time() - inicio, 2)}
+
+
+def consultar_llm(consulta, instruccion, temperature=0.2, max_tokens=160):
+    """Única puerta al modelo. Enruta al proveedor configurado; misma forma de salida."""
     if not isinstance(consulta, str) or not consulta.strip():
         return {"ok": False, "error": "consulta vacía", "modo": "validacion"}
-    if _llm is None:
-        return {"ok": False, "error": "modelo no cargado (llamá a cargar_modelo())",
-                "modo": "sin_modelo"}
-
     inicio = time.time()
-    salida = _llm.create_chat_completion(
-        messages=[
-            {"role": "system", "content": instruccion},
-            {"role": "user", "content": consulta},
-        ],
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    return {
-        "ok": True,
-        "pregunta": consulta,
-        "respuesta": salida["choices"][0]["message"]["content"].strip(),
-        "modo": REPO_ID,
-        "duracion_s": round(time.time() - inicio, 2),
-    }
+    if PROVEEDOR == "openrouter":
+        return _consultar_openrouter(instruccion, consulta, temperature, max_tokens, inicio)
+    return _consultar_local(instruccion, consulta, temperature, max_tokens, inicio)
