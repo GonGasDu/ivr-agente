@@ -32,7 +32,8 @@ _CLIENTES = {
 
 
 def buscar_fake(ident):
-    return _CLIENTES.get(ident)
+    return next((c for c in _CLIENTES.values()
+                 if c["dni"] == ident or c["nro_cliente"] == ident), None)
 
 
 def clasificar_fake(mensaje, opciones):
@@ -42,8 +43,10 @@ def clasificar_fake(mensaje, opciones):
         "hogar": ["hogar", "casa"], "empresa": ["empresa", "oficina"],
         "facturacion": ["factura"], "pagos": ["pagar", "deuda", "abonar"],
         "asesor": ["asesor"], "soporte": ["internet", "soporte", "conexion", "conexión"],
-        "acepta": ["acepto", "dale", "ok", "bueno"], "rechaza": ["no", "rechazo"],
-        "extension": ["extension", "dias", "plazo"], "competencia": ["competencia", "otra empresa", "me voy"],
+        "acepta": ["acepto", "dale", "ok", "bueno", "pago ahora", "quiero pagar"],
+        "rechaza": ["no", "rechazo"], "no_puede": ["no puedo", "no llego", "muy caro", "es mucho"],
+        "extension": ["extension", "dias", "plazo", "unos dias"],
+        "competencia": ["competencia", "otra empresa", "me voy"],
     }
     for op in opciones:
         if any(kw in m for kw in tabla.get(op, [])):
@@ -107,14 +110,47 @@ def test_negociacion_pagos_multiturno_acepta():
     assert r["decision"] == "responder"
 
 
-def test_negociacion_pagos_rechaza_escala_o_deriva():
-    # Cliente antiguo (>=12m) rechaza el 10% -> el agente sube al escalón 2 (sigue conversando).
+def test_escalon0_pide_pago_sin_descuento():
+    # El primer turno de pagos NO ofrece descuento: pide abonar la factura.
+    r = correr(["soy cliente", "36956909", "quiero pagar"])
+    assert "abonarla ahora" in r["mensaje"]
+    assert "%" not in r["mensaje"]          # sin descuento en el escalón 0
+
+
+def test_no_puede_baja_a_10_luego_20():
     estado = nuevo_estado()
     for m in ["soy cliente", "36956909", "quiero pagar"]:
         orquestador(estado, m, clasificar=clasificar_fake, buscar=buscar_fake)
-    r = orquestador(estado, "no me sirve", clasificar=clasificar_fake, buscar=buscar_fake)
-    assert r["nodo"] == "en_worker"          # sigue negociando, no cerró
-    assert "20%" in r["mensaje"]
+    r1 = orquestador(estado, "no puedo pagar todo", clasificar=clasificar_fake, buscar=buscar_fake)
+    assert "10%" in r1["mensaje"] and r1["nodo"] == "en_worker"
+    r2 = orquestador(estado, "no, sigue caro", clasificar=clasificar_fake, buscar=buscar_fake)
+    assert "20%" in r2["mensaje"]
+
+
+def test_pago_menciona_medios_de_pago():
+    r = correr(["soy cliente", "36956909", "quiero pagar", "dale, acepto"])
+    assert r["decision"] == "responder"
+    assert "Medios de pago" in r["mensaje"]
+
+
+def test_herramienta_no_registrada_no_se_ejecuta():
+    from agente.herramientas import ejecutar
+    r = ejecutar("borrar_deuda", nro_cliente="480001")
+    assert r["ok"] is False
+
+
+def test_slot_filling_identifica_en_inicio():
+    # "soy el cliente 480001" -> identifica de una, sin volver a pedir el número.
+    r = correr(["soy el cliente 480001"])
+    assert "Ana Test" in r["mensaje"]
+    assert "motivo" in r["mensaje"].lower()
+
+
+def test_slot_filling_identifica_y_rutea_en_un_mensaje():
+    # "soy cliente 480001, quiero pagar" -> identifica Y enruta a pagos en un paso.
+    r = correr(["soy cliente 480001, quiero pagar"])
+    assert r["agente_destino"] == "pagos"
+    assert "Ana Test" in r["mensaje"]
 
 
 if __name__ == "__main__":
