@@ -95,11 +95,13 @@ def paso(sub, mensaje, clasificar):
             sub["paso"] = "espera_competencia"
             return _turno("Lamento que quieras irte. Para que te quedes, puedo ofrecerte un 20% de descuento "
                           "durante los próximos 2 meses. ¿Te sirve?")
-        # no puede pagar -> recién ahí aparece el 10%
-        sub["paso"] = "negociando"
-        sub["nivel"] = 1
-        return _turno(f"Entiendo. Puedo ofrecerte un 10% de descuento sobre la factura de ${c['deuda']:.0f} "
-                      "si la abonás ahora. ¿Te sirve?")
+        if r == "no_puede":                                  # solo la imposibilidad destraba el 10%
+            sub["paso"] = "negociando"
+            sub["nivel"] = 1
+            return _turno(f"Entiendo. Puedo ofrecerte un 10% de descuento sobre la factura de ${c['deuda']:.0f} "
+                          "si la abonás ahora. ¿Te sirve?")
+        # ambiguo / "solo miraba" -> cerrar sin regalar descuento
+        return _turno("De acuerdo, cuando quieras podés abonar la factura. ¿Algo más?", "responder", fin=True)
 
     if p == "negociando":
         r = clasificar(mensaje, ["acepta", "rechaza", "extension", "competencia"])

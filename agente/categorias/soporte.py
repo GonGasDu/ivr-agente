@@ -1,10 +1,12 @@
-"""Worker de SOPORTE TÉCNICO (single-turn). Interfaz uniforme iniciar/paso."""
+"""Worker de SOPORTE TÉCNICO (single-turn). Problemas de conexión, instalación,
+turnos de técnicos, contraseña del wifi, etc."""
 
 
-def iniciar(cliente, hoy_dia=None):
+def iniciar(cliente, mensaje="", clasificar=None, hoy_dia=None):
     t = {"mensaje": f"Tu conexión figura: {cliente['estado_conexion']}. "
                     "Te derivo a soporte técnico con ese dato.",
-         "decision": "derivar_soporte", "requiere_humano": True, "fin": True, "agente_destino": "soporte"}
+         "decision": "derivar_soporte", "requiere_humano": True, "fin": True,
+         "agente_destino": "soporte"}
     return None, t
 
 

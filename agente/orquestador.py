@@ -34,13 +34,13 @@ def _rutear(estado, mensaje, clasificar, traza):
     intent = clasificar(mensaje, list(AGENTES_CATEGORIA))
     traza.append({"paso": "clasificar_motivo", "intent": intent})
     if intent == "soporte" and pol.problema_es_de_pago(cliente):
-        traza.append({"paso": "desambiguacion", "de": "soporte", "a": "pagos",
+        traza.append({"paso": "desambiguacion", "de": "soporte", "a": "cuenta",
                       "estado_conexion": cliente.get("estado_conexion")})
-        intent = "pagos"
+        intent = "cuenta"
     if intent not in AGENTES_CATEGORIA:
         return None
     worker = AGENTES_CATEGORIA[intent]
-    sub, t = worker.iniciar(cliente)
+    sub, t = worker.iniciar(cliente, mensaje, clasificar)
     if t.get("fin"):
         estado["nodo"] = "fin"
     else:
@@ -129,7 +129,7 @@ def orquestador(estado, mensaje, clasificar=clasificar_intencion, buscar=_buscar
             estado["nodo"] = "fin"
             return turno(estado, "No logro entender el motivo. Te derivo con un asesor.",
                          decision="derivar_asesor", requiere_humano=True, traza=traza)
-        return turno(estado, "¿Es por Facturación, Pagos, un tema administrativo o Soporte técnico?", traza=traza)
+        return turno(estado, "¿Es sobre tu cuenta o factura, un problema técnico, o un trámite administrativo?", traza=traza)
 
     if nodo == "en_worker":
         worker = AGENTES_CATEGORIA[estado["worker"]]
