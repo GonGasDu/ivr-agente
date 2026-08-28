@@ -182,6 +182,28 @@ def test_llm_openrouter_sin_api_key():
     assert r["ok"] is False and r["modo"] == "sin_api_key"
 
 
+def test_llm_openrouter_content_null_no_explota():
+    # El caso real que rompió: content = None. El wrapper debe degradar, no explotar.
+    import os, json, time, urllib.request
+    from agente import llm
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+
+    class FakeResp:
+        def read(self): return json.dumps(
+            {"choices": [{"message": {"content": None}}]}).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+
+    orig = urllib.request.urlopen
+    urllib.request.urlopen = lambda req, timeout=60: FakeResp()
+    try:
+        r = llm._consultar_openrouter("sys", "hola", 0, 50, time.time())
+    finally:
+        urllib.request.urlopen = orig
+    assert r["ok"] is False            # no explota: devuelve el contrato de error
+    assert "vac" in r["error"]
+
+
 if __name__ == "__main__":
     import sys, traceback
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

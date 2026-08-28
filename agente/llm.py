@@ -79,7 +79,12 @@ def _consultar_openrouter(instruccion, consulta, temperature, max_tokens, inicio
         "model": MODELO_OPENROUTER,
         "messages": [{"role": "system", "content": instruccion},
                      {"role": "user", "content": consulta}],
-        "temperature": temperature, "max_tokens": max_tokens,
+        "temperature": temperature,
+        # Los modelos de razonamiento pueden gastar el presupuesto "pensando" y dejar
+        # content vacío. Para clasificar no hace falta: apagamos el razonamiento y damos
+        # margen holgado de tokens de respuesta.
+        "max_tokens": max(max_tokens, 512),
+        "reasoning": {"enabled": False},
     }).encode("utf-8")
     req = urllib.request.Request(
         OPENROUTER_URL, data=cuerpo, method="POST",
@@ -94,10 +99,14 @@ def _consultar_openrouter(instruccion, consulta, temperature, max_tokens, inicio
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}: {e}", "modo": "openrouter"}
     try:
-        texto = data["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError):
+        mensaje = data["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError):
         return {"ok": False, "error": "respuesta sin 'choices'", "modo": "openrouter"}
-    return {"ok": True, "pregunta": consulta, "respuesta": texto,
+    # content puede venir None (p. ej. modelos de razonamiento que usan otro campo).
+    contenido = mensaje.get("content") or mensaje.get("reasoning")
+    if not contenido:
+        return {"ok": False, "error": "el proveedor devolvió content vacío", "modo": "openrouter"}
+    return {"ok": True, "pregunta": consulta, "respuesta": contenido.strip(),
             "modo": MODELO_OPENROUTER, "duracion_s": round(time.time() - inicio, 2)}
 
 
