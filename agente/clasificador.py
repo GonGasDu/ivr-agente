@@ -24,7 +24,7 @@ DESCRIPCIONES = {
     # menú del cliente
     "cuenta":        "temas de su cuenta o factura: pagar, saldar deuda, refinanciar, pedir extensión o descuento, o consultar su plan/saldo/factura",
     "soporte":       "problemas TÉCNICOS: sin internet, cortes, intermitencias, lentitud, cobertura, instalación, turnos de técnicos, cambiar la contraseña del wifi",
-    "administrativo":"trámites o reclamos administrativos: cambio de titularidad, cambio de datos personales, y todo lo que no sea técnico ni de pago",
+    "administrativo":"trámites administrativos puntuales: cambio de titularidad o de datos personales, o un reclamo administrativo concreto",
     # dentro de cuenta
     "pagar":         "quiere pagar, abonar, saldar, refinanciar, una extensión o un descuento",
     "consultar":     "SOLO quiere información (ver su plan, saldo o factura), sin pagar ahora",
@@ -35,6 +35,8 @@ DESCRIPCIONES = {
     "extension":     "pide más tiempo, unos días, una prórroga para pagar",
     "competencia":   "dice que se va a otra empresa o que se cambia de compañía",
 }
+
+EJEMPLOS_OTRO = ["hola", "soy el cliente juan", "buenas, ya soy cliente", "necesito ayuda"]
 
 EJEMPLOS = {
     "contratar":     ["quiero contratar internet", "cuánto sale un plan"],
@@ -55,14 +57,17 @@ EJEMPLOS = {
 
 def _armar_instruccion(opciones):
     lineas = [f"- {op}: {DESCRIPCIONES.get(op, op)}" for op in opciones]
+    lineas.append("- otro: si es un saludo, la persona solo se identifica, o no expresa "
+                  "con claridad ninguna de las intenciones de arriba")
     ejemplos = [f'"{ej}" -> {op}' for op in opciones for ej in EJEMPLOS.get(op, [])]
+    ejemplos += [f'"{ej}" -> otro' for ej in EJEMPLOS_OTRO]
     return (
         "Sos el clasificador de intención de un IVR de una empresa de internet.\n"
         "Clasificá el mensaje del usuario en UNA de estas categorías:\n"
         + "\n".join(lineas)
-        + "\n- otro: si no encaja claramente en ninguna.\n\n"
-        + ("Ejemplos:\n" + "\n".join(ejemplos) + "\n\n" if ejemplos else "")
-        + "No inventes categorías fuera de la lista.\n"
+        + "\n\nEjemplos:\n" + "\n".join(ejemplos)
+        + "\n\nAnte la duda, o si no hay una intención clara, respondé 'otro'. "
+        "No inventes categorías fuera de la lista.\n"
         'Respondé SOLO JSON válido: {"intent":"..."}'
     )
 

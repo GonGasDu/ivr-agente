@@ -10,7 +10,7 @@ Novedades:
 
 `clasificar` y `buscar` se inyectan para testear sin el modelo ni el CRM real.
 """
-from agente.reglas import extraer_identificador, LEGIBLE
+from agente.reglas import extraer_identificador, LEGIBLE, es_solo_identificacion
 from agente.crm import buscar_cliente as _buscar_cliente
 from agente.clasificador import clasificar_intencion
 from agente.categorias import AGENTES_CATEGORIA
@@ -53,10 +53,13 @@ def _identificado(estado, cliente, mensaje, clasificar, traza):
     """Tras identificar: intenta rutear el motivo del MISMO mensaje (slot filling);
     si no hay motivo, saluda por nombre y lo pide."""
     estado["cliente"] = cliente
-    r = _rutear(estado, mensaje, clasificar, traza)
-    if r:
-        r["mensaje"] = f"¡Hola {cliente['nombre']}! " + r["mensaje"]
-        return r
+    # Slot filling conservador: solo intentamos rutear si hay un motivo real
+    # (un "soy el cliente 480007" es identificación, no motivo -> preguntamos).
+    if not es_solo_identificacion(mensaje):
+        r = _rutear(estado, mensaje, clasificar, traza)
+        if r:
+            r["mensaje"] = f"¡Hola {cliente['nombre']}! " + r["mensaje"]
+            return r
     estado["nodo"] = "menu_cliente"
     return turno(estado, f"¡Hola {cliente['nombre']}! ¿Cuál es el motivo de tu llamado?", traza=traza)
 

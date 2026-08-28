@@ -172,6 +172,20 @@ def test_llm_openrouter_content_null_no_explota():
     assert r["ok"] is False and "vac" in r["error"]
 
 
+def test_solo_identificacion_no_rutea():
+    # "soy el cliente 480001" es identificación, NO motivo: debe preguntar, no enrutar.
+    r = correr(["soy el cliente 480001"])
+    assert r["agente_destino"] is None
+    assert "motivo" in r["mensaje"].lower()
+
+
+def test_es_solo_identificacion_regla():
+    from agente.reglas import es_solo_identificacion
+    assert es_solo_identificacion("soy el cliente 480001") is True
+    assert es_solo_identificacion("hola buenas") is True
+    assert es_solo_identificacion("quiero pagar mi factura") is False
+
+
 if __name__ == "__main__":
     import sys, traceback
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

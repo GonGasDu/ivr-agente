@@ -36,3 +36,21 @@ def detectar_dato_sensible(texto: str):
         if re.search(patron, texto, flags=re.IGNORECASE):
             return nombre
     return None
+
+
+# Palabras de saludo/identificación: si el mensaje (sin números) solo tiene estas,
+# no hay un motivo que rutear -> conviene preguntarlo en vez de adivinar.
+_PALABRAS_IDENTIFICACION = {
+    "hola", "buenas", "buenos", "buen", "dia", "dias", "día", "días", "tardes", "noches",
+    "soy", "el", "la", "los", "las", "mi", "cliente", "clienta", "abonado", "socio",
+    "numero", "número", "nro", "dni", "documento", "es", "son", "con", "de", "que", "tal",
+    "hey", "señor", "señora", "sr", "sra", "gracias",
+}
+
+
+def es_solo_identificacion(mensaje: str) -> bool:
+    """True si el mensaje es solo un saludo y/o el identificador, sin un motivo real."""
+    limpio = re.sub(r"[\d.\-]", " ", mensaje.lower())
+    palabras = [w for w in re.findall(r"[a-záéíóúñ]+", limpio)
+                if w not in _PALABRAS_IDENTIFICACION]
+    return len(palabras) == 0
